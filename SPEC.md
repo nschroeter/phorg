@@ -5,7 +5,7 @@ CLI tool that organizes photos from a source directory into a date-based folder 
 
 ## Usage
 ```
-photo_import <src> <dest> [--dry-run]
+photo_import <src> <dest> [-m | --move] [--dry-run]
 ```
 
 ## Behavior
@@ -17,8 +17,8 @@ photo_import <src> <dest> [--dry-run]
 
 ### XMP sidecar files
 - Darktable sidecar format: `<photo_filename>.xmp` (e.g. `A1_05140.ARW.xmp`)
-- When a photo is moved and a corresponding `.xmp` sidecar exists in the source, it is moved to the same destination directory
-- If the photo is skipped, the sidecar is not moved
+- When a photo is copied/moved and a corresponding `.xmp` sidecar exists in the source, it is copied/moved to the same destination directory
+- If the photo is skipped, the sidecar is not copied/moved
 - Same duplicate / conflict handling applies to the sidecar
 
 ### Date extraction
@@ -33,17 +33,19 @@ photo_import <src> <dest> [--dry-run]
 Example: `dest/2026/05/13/A1_05140.ARW`
 
 ### Operation
-- **Move** files (delete from source after successful copy)
-- With `--dry-run`: print what would happen without moving or creating anything
+- Default: **copy** files to destination (source files are kept)
+- With `-m` / `--move`: **move** files (delete from source after successful copy)
+  - User must confirm by typing `yes` before any files are processed
+- With `--dry-run`: print what would happen without copying, moving, or creating anything
 
 ### Duplicate / conflict handling
 Compute blake3 checksum of source file, then:
 
 | Destination state | Action |
 |---|---|
-| No file at destination | Move |
+| No file at destination | Copy (or move with `--move`) |
 | File exists, same checksum | Skip, log to stderr |
-| File exists, different checksum | Rename source file: `A1_05140(1).ARW`, `(2)`, … then move |
+| File exists, different checksum | Rename source file: `A1_05140(1).ARW`, `(2)`, … then copy/move |
 
 Rename counter increments until a free slot is found.
 

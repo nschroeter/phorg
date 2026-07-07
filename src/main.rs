@@ -11,16 +11,20 @@ use walkdir::WalkDir;
 #[command(
     name = "phorg",
     about = "Organize photos into YYYY/MM/DD folders by EXIF date",
-    long_about = "Moves .ARW, .JPG, and .JPEG files from SRC into DEST/YYYY/MM/DD/.\n\
+    long_about = "Copies .ARW, .JPG, and .JPEG files from SRC into DEST/YYYY/MM/DD/ based on EXIF date.\n\
+                  Darktable .xmp sidecar files are copied/moved alongside their photo.\n\
                   Files without an EXIF DateTimeOriginal are skipped.\n\
-                  Duplicates (same content) are skipped. Filename conflicts are renamed e.g. A1_0001(1).ARW."
+                  Duplicates (same content) are skipped. Filename conflicts are renamed e.g. A1_0001(1).ARW.\n\
+                  Use --move to move instead of copy (requires confirmation)."
 )]
 struct Args {
     #[arg(help = "Source directory to import from")]
     src: PathBuf,
     #[arg(help = "Destination directory to organize into")]
     dest: PathBuf,
-    #[arg(long, help = "Print what would happen without moving anything")]
+    #[arg(short = 'm', long = "move", help = "Move files instead of copying; requires confirmation")]
+    move_files: bool,
+    #[arg(long, help = "Print what would happen without copying or moving anything")]
     dry_run: bool,
 }
 
@@ -70,7 +74,7 @@ fn resolve_conflict(base: &Path) -> PathBuf {
     }
 }
 
-fn move_xmp_sidecar(src_photo: &Path, dest_photo: &Path, dry_run: bool, pb: &ProgressBar) -> Result<()> {
+fn transfer_xmp_sidecar(src_photo: &Path, dest_photo: &Path, move_files: bool, dry_run: bool, pb: &ProgressBar) -> Result<()> {
     let mut xmp_filename = src_photo.file_name().unwrap().to_os_string();
     xmp_filename.push(".xmp");
     let xmp_src = src_photo.with_file_name(&xmp_filename);
@@ -87,8 +91,13 @@ fn move_xmp_sidecar(src_photo: &Path, dest_photo: &Path, dry_run: bool, pb: &Pro
         pb.suspend(|| eprintln!("RENAME conflict -> {}", xmp_dest.file_name().unwrap_or_default().to_string_lossy()));
     }
     if !dry_run {
-        fs::rename(&xmp_src, &xmp_dest)
-            .with_context(|| format!("move {} -> {}", xmp_src.display(), xmp_dest.display()))?;
+        if move_files {
+            fs::rename(&xmp_src, &xmp_dest)
+                .with_context(|| format!("move {} -> {}", xmp_src.display(), xmp_dest.display()))?;
+        } else {
+            fs::copy(&xmp_src, &xmp_dest)
+                .with_context(|| format!("copy {} -> {}", xmp_src.display(), xmp_dest.display()))?;
+        }
     }
     Ok(())
 }
@@ -104,12 +113,20 @@ fn main() -> Result<()> {
     let args = Args::parse();
 
     let dry_run = args.dry_run;
+    let move_files = args.move_files;
     let src = args.src.canonicalize().context("invalid src")?;
     let dest = fs::canonicalize(&args.dest).unwrap_or_else(|_| args.dest.clone());
     anyhow::ensure!(
         !dest.starts_with(&src),
         "dest must not be inside src"
     );
+
+    if move_files && !dry_run {
+        eprint!("This will move files from {} to {}. Type 'yes' to confirm: ", src.display(), dest.display());
+        let mut input = String::new();
+        std::io::stdin().read_line(&mut input).context("failed to read confirmation")?;
+        anyhow::ensure!(input.trim() == "yes", "aborted");
+    }
 
     let entries: Vec<_> = WalkDir::new(&src)
         .into_iter()
@@ -118,8 +135,9 @@ fn main() -> Result<()> {
         .collect();
 
     let pb = ProgressBar::new(entries.len() as u64);
+    pb.set_prefix(if move_files { "Moving" } else { "Copying" });
     pb.set_style(
-        ProgressStyle::with_template("{spinner:.dim} [{bar:40}] {pos}/{len} {msg}")
+        ProgressStyle::with_template("{spinner:.dim} {prefix} [{bar:40}] {pos}/{len} {msg}")
             .unwrap()
             .tick_chars("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏ "),
     );
@@ -156,17 +174,22 @@ fn main() -> Result<()> {
         if !dry_run {
             fs::create_dir_all(target.parent().unwrap())
                 .with_context(|| format!("create dir {}", target.parent().unwrap().display()))?;
-            fs::rename(src_path, &target)
-                .with_context(|| format!("move {} -> {}", src_path.display(), target.display()))?;
+            if move_files {
+                fs::rename(src_path, &target)
+                    .with_context(|| format!("move {} -> {}", src_path.display(), target.display()))?;
+            } else {
+                fs::copy(src_path, &target)
+                    .with_context(|| format!("copy {} -> {}", src_path.display(), target.display()))?;
+            }
         }
 
         pb.suspend(|| println!("{}", target.display()));
-        move_xmp_sidecar(src_path, &target, dry_run, &pb)?;
+        transfer_xmp_sidecar(src_path, &target, move_files, dry_run, &pb)?;
         pb.inc(1);
     }
     pb.finish_and_clear();
 
-    if !dry_run {
+    if move_files && !dry_run {
         for entry in WalkDir::new(&src).contents_first(true)
             .into_iter()
             .filter_map(|e| e.ok())

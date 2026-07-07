@@ -1,9 +1,22 @@
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 fn binary() -> PathBuf {
     PathBuf::from(env!("CARGO_BIN_EXE_phorg"))
+}
+
+fn run_move(src: &Path, dest: &Path) -> std::process::Output {
+    let mut child = Command::new(binary())
+        .args([src, dest, Path::new("--move")])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    child.stdin.take().unwrap().write_all(b"yes\n").unwrap();
+    child.wait_with_output().unwrap()
 }
 
 /// Minimal TIFF with a single DateTimeOriginal tag in an Exif sub-IFD.
@@ -102,7 +115,7 @@ fn test_source_dirs_cleaned() {
     fs::create_dir_all(&dest).unwrap();
     write(&src.join("session/A1_0001.ARW"), &make_arw("2026:06:13 10:00:00"));
 
-    Command::new(binary()).args([&src, &dest]).status().unwrap();
+    run_move(&src, &dest);
 
     let subdirs: Vec<_> = walkdir::WalkDir::new(&src)
         .min_depth(1)
