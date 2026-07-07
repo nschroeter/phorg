@@ -55,6 +55,7 @@ Rename counter increments until a free slot is found.
 - After processing: print a summary line to stdout:
   - `Copied/Moved N files — X ARW, Y JPG, Z XMP`
   - `N duplicate(s) skipped` (only if duplicates were detected)
+- If duplicates were detected, write a log file `duplicates-log-YYYY-MM-DD_HH-MM-SS.log` in the current working directory listing each skipped duplicate source path (one per line)
 
 ## Progress display
 - A progress bar shows `[n/total] current_filename` while processing

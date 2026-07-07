@@ -141,7 +141,7 @@ fn test_duplicate_skip() {
     let output = Command::new(binary()).args([&src, &dest]).output().unwrap();
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(!stdout.contains("2026"), "expected no file paths in stdout");
+    assert!(stdout.contains("2026/2026-06-13/A1_0001.ARW"), "expected dest path in stdout: {stdout}");
     assert!(String::from_utf8_lossy(&output.stderr).contains("SKIP (duplicate)"));
 }
 

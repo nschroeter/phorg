@@ -1,4 +1,5 @@
 use anyhow::{Context, Result};
+use chrono::Local;
 use clap::Parser;
 use indicatif::{ProgressBar, ProgressStyle};
 use std::fs;
@@ -106,7 +107,7 @@ struct Stats {
     arw: u32,
     jpg: u32,
     xmp: u32,
-    duplicates: u32,
+    duplicate_paths: Vec<String>,
 }
 
 fn is_target(path: &Path) -> bool {
@@ -172,8 +173,11 @@ fn main() -> Result<()> {
             let src_hash = checksum(src_path)?;
             let dest_hash = checksum(&target)?;
             if src_hash == dest_hash {
-                pb.suspend(|| eprintln!("SKIP (duplicate): {}", src_path.display()));
-                stats.duplicates += 1;
+                let src_str = src_path.display().to_string();
+                let dest_str = target.display().to_string();
+                pb.suspend(|| eprintln!("SKIP (duplicate): {src_str}"));
+                pb.suspend(|| println!("{dest_str}"));
+                stats.duplicate_paths.push(format!("{src_str} -> {dest_str}"));
                 pb.inc(1);
                 continue;
             }
@@ -210,8 +214,11 @@ fn main() -> Result<()> {
     let verb = if move_files { "Moved" } else { "Copied" };
     let total = stats.arw + stats.jpg + stats.xmp;
     println!("{verb} {total} files — {} ARW, {} JPG, {} XMP", stats.arw, stats.jpg, stats.xmp);
-    if stats.duplicates > 0 {
-        println!("{} duplicate(s) skipped", stats.duplicates);
+    if !stats.duplicate_paths.is_empty() {
+        println!("{} duplicate(s) skipped", stats.duplicate_paths.len());
+        let log_name = format!("duplicates-log-{}.log", Local::now().format("%Y-%m-%d_%H-%M-%S"));
+        fs::write(&log_name, stats.duplicate_paths.join("\n") + "\n")
+            .with_context(|| format!("write {log_name}"))?;
     }
 
     if move_files && !dry_run {

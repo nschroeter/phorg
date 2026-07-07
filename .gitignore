@@ -3,3 +3,4 @@ test/fixtures/
 example_input/
 photo_library/
 .DS_Store
+duplicates-log-*.log

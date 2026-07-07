@@ -21,6 +21,7 @@ Copies all `.ARW`, `.JPG`, and `.JPEG` files found recursively in `<src>` into `
 - Filename conflicts (same name, different content) are renamed: `A1_0001(1).ARW`, `A1_0001(2).ARW`, etc.
 - Empty source directories are removed after a move
 - `<dest>` must not be inside `<src>`
+- A summary is printed after processing: file counts by type (ARW, JPG, XMP) and number of duplicates skipped
 
 ## Supported formats
 
