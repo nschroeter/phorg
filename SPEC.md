@@ -5,7 +5,7 @@ CLI tool that organizes photos from a source directory into a date-based folder 
 
 ## Usage
 ```
-photo_import <src> <dest>
+photo_import <src> <dest> [--dry-run]
 ```
 
 ## Behavior
@@ -34,6 +34,7 @@ Example: `dest/2026/05/13/A1_05140.ARW`
 
 ### Operation
 - **Move** files (delete from source after successful copy)
+- With `--dry-run`: print what would happen without moving or creating anything
 
 ### Duplicate / conflict handling
 Compute blake3 checksum of source file, then:

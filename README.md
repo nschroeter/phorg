@@ -5,8 +5,10 @@ Organizes photos into a `YYYY/MM/DD` folder structure based on EXIF date.
 ## Usage
 
 ```
-phorg <src> <dest>
+phorg <src> <dest> [--dry-run]
 ```
+
+`--dry-run` prints what would be moved without making any changes.
 
 Moves all `.ARW`, `.JPG`, and `.JPEG` files found recursively in `<src>` into `<dest>/YYYY/MM/DD/`.
 

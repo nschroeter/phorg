@@ -18,6 +18,8 @@ struct Args {
     src: PathBuf,
     #[arg(help = "Destination directory to organize into")]
     dest: PathBuf,
+    #[arg(long, help = "Print what would happen without moving anything")]
+    dry_run: bool,
 }
 
 fn exif_date(path: &Path) -> Option<(i32, u32, u32)> {
@@ -66,7 +68,7 @@ fn resolve_conflict(base: &Path) -> PathBuf {
     }
 }
 
-fn move_xmp_sidecar(src_photo: &Path, dest_photo: &Path) -> Result<()> {
+fn move_xmp_sidecar(src_photo: &Path, dest_photo: &Path, dry_run: bool) -> Result<()> {
     let mut xmp_filename = src_photo.file_name().unwrap().to_os_string();
     xmp_filename.push(".xmp");
     let xmp_src = src_photo.with_file_name(&xmp_filename);
@@ -82,8 +84,11 @@ fn move_xmp_sidecar(src_photo: &Path, dest_photo: &Path) -> Result<()> {
         xmp_dest = resolve_conflict(&xmp_dest);
         eprintln!("RENAME conflict -> {}", xmp_dest.file_name().unwrap_or_default().to_string_lossy());
     }
-    fs::rename(&xmp_src, &xmp_dest)
-        .with_context(|| format!("move {} -> {}", xmp_src.display(), xmp_dest.display()))
+    if !dry_run {
+        fs::rename(&xmp_src, &xmp_dest)
+            .with_context(|| format!("move {} -> {}", xmp_src.display(), xmp_dest.display()))?;
+    }
+    Ok(())
 }
 
 fn is_target(path: &Path) -> bool {
@@ -96,6 +101,7 @@ fn is_target(path: &Path) -> bool {
 fn main() -> Result<()> {
     let args = Args::parse();
 
+    let dry_run = args.dry_run;
     let src = args.src.canonicalize().context("invalid src")?;
     let dest = fs::canonicalize(&args.dest).unwrap_or_else(|_| args.dest.clone());
     anyhow::ensure!(
@@ -132,22 +138,25 @@ fn main() -> Result<()> {
             eprintln!("RENAME conflict -> {}", target.file_name().unwrap_or_default().to_string_lossy());
         }
 
-        fs::create_dir_all(target.parent().unwrap())
-            .with_context(|| format!("create dir {}", target.parent().unwrap().display()))?;
-
-        fs::rename(src_path, &target)
-            .with_context(|| format!("move {} -> {}", src_path.display(), target.display()))?;
+        if !dry_run {
+            fs::create_dir_all(target.parent().unwrap())
+                .with_context(|| format!("create dir {}", target.parent().unwrap().display()))?;
+            fs::rename(src_path, &target)
+                .with_context(|| format!("move {} -> {}", src_path.display(), target.display()))?;
+        }
 
         println!("{}", target.display());
-        move_xmp_sidecar(src_path, &target)?;
+        move_xmp_sidecar(src_path, &target, dry_run)?;
     }
 
-    for entry in WalkDir::new(&src).contents_first(true)
-        .into_iter()
-        .filter_map(|e| e.ok())
-        .filter(|e| e.file_type().is_dir())
-    {
-        let _ = fs::remove_dir(entry.path());
+    if !dry_run {
+        for entry in WalkDir::new(&src).contents_first(true)
+            .into_iter()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_type().is_dir())
+        {
+            let _ = fs::remove_dir(entry.path());
+        }
     }
 
     Ok(())
