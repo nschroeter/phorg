@@ -140,7 +140,8 @@ fn test_duplicate_skip() {
     write(&src.join("A1_0001.ARW"), &data);
     let output = Command::new(binary()).args([&src, &dest]).output().unwrap();
     assert!(output.status.success());
-    assert!(output.stdout.is_empty());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(!stdout.contains("2026"), "expected no file paths in stdout");
     assert!(String::from_utf8_lossy(&output.stderr).contains("SKIP (duplicate)"));
 }
 
@@ -243,6 +244,44 @@ fn test_xmp_not_moved_when_photo_skipped() {
 }
 
 #[test]
+fn test_summary_counts() {
+    let tmp = tempfile::tempdir().unwrap();
+    let src = tmp.path().join("src");
+    let dest = tmp.path().join("dest");
+    fs::create_dir_all(&dest).unwrap();
+    write(&src.join("A1_0001.ARW"), &make_arw("2026:06:13 10:00:00"));
+    write(&src.join("A1_0001.ARW.xmp"), b"<xmp/>");
+    write(&src.join("IMG_0001.JPG"), &make_jpeg("2026:06:13 10:00:00"));
+
+    let output = Command::new(binary()).args([&src, &dest]).output().unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Copied 3 files"), "stdout: {stdout}");
+    assert!(stdout.contains("1 ARW"), "stdout: {stdout}");
+    assert!(stdout.contains("1 JPG"), "stdout: {stdout}");
+    assert!(stdout.contains("1 XMP"), "stdout: {stdout}");
+    assert!(!stdout.contains("duplicate"), "stdout: {stdout}");
+}
+
+#[test]
+fn test_summary_duplicates() {
+    let tmp = tempfile::tempdir().unwrap();
+    let src = tmp.path().join("src");
+    let dest = tmp.path().join("dest");
+    fs::create_dir_all(&dest).unwrap();
+    let data = make_arw("2026:06:13 10:00:00");
+    write(&src.join("A1_0001.ARW"), &data);
+
+    Command::new(binary()).args([&src, &dest]).status().unwrap();
+
+    let output = Command::new(binary()).args([&src, &dest]).output().unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("1 duplicate(s) skipped"), "stdout: {stdout}");
+    assert!(stdout.contains("Copied 0 files"), "stdout: {stdout}");
+}
+
+#[test]
 fn test_no_exif_skipped() {
     let tmp = tempfile::tempdir().unwrap();
     let src = tmp.path().join("src");
@@ -252,6 +291,7 @@ fn test_no_exif_skipped() {
 
     let output = Command::new(binary()).args([&src, &dest]).output().unwrap();
     assert!(output.status.success());
-    assert!(output.stdout.is_empty());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(!stdout.contains('/'), "expected no file paths in stdout");
     assert!(String::from_utf8_lossy(&output.stderr).contains("SKIP (no EXIF date)"));
 }

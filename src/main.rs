@@ -73,18 +73,18 @@ fn resolve_conflict(base: &Path) -> PathBuf {
     }
 }
 
-fn transfer_xmp_sidecar(src_photo: &Path, dest_photo: &Path, move_files: bool, dry_run: bool, pb: &ProgressBar) -> Result<()> {
+fn transfer_xmp_sidecar(src_photo: &Path, dest_photo: &Path, move_files: bool, dry_run: bool, pb: &ProgressBar) -> Result<bool> {
     let mut xmp_filename = src_photo.file_name().unwrap().to_os_string();
     xmp_filename.push(".xmp");
     let xmp_src = src_photo.with_file_name(&xmp_filename);
     if !xmp_src.exists() {
-        return Ok(());
+        return Ok(false);
     }
     let mut xmp_dest = dest_photo.parent().unwrap().join(&xmp_filename);
     if xmp_dest.exists() {
         if checksum(&xmp_src)? == checksum(&xmp_dest)? {
             pb.suspend(|| eprintln!("SKIP (duplicate): {}", xmp_src.display()));
-            return Ok(());
+            return Ok(false);
         }
         xmp_dest = resolve_conflict(&xmp_dest);
         pb.suspend(|| eprintln!("RENAME conflict -> {}", xmp_dest.file_name().unwrap_or_default().to_string_lossy()));
@@ -98,7 +98,15 @@ fn transfer_xmp_sidecar(src_photo: &Path, dest_photo: &Path, move_files: bool, d
                 .with_context(|| format!("copy {} -> {}", xmp_src.display(), xmp_dest.display()))?;
         }
     }
-    Ok(())
+    Ok(true)
+}
+
+#[derive(Default)]
+struct Stats {
+    arw: u32,
+    jpg: u32,
+    xmp: u32,
+    duplicates: u32,
 }
 
 fn is_target(path: &Path) -> bool {
@@ -142,6 +150,8 @@ fn main() -> Result<()> {
     );
     pb.enable_steady_tick(Duration::from_millis(100));
 
+    let mut stats = Stats::default();
+
     for entry in &entries {
         let src_path = entry.path();
         pb.set_message(src_path.file_name().and_then(|n| n.to_str()).unwrap_or_default().to_string());
@@ -163,6 +173,7 @@ fn main() -> Result<()> {
             let dest_hash = checksum(&target)?;
             if src_hash == dest_hash {
                 pb.suspend(|| eprintln!("SKIP (duplicate): {}", src_path.display()));
+                stats.duplicates += 1;
                 pb.inc(1);
                 continue;
             }
@@ -182,11 +193,26 @@ fn main() -> Result<()> {
             }
         }
 
+        match src_path.extension().and_then(|e| e.to_str()).map(|e| e.to_ascii_lowercase()).as_deref() {
+            Some("arw") => stats.arw += 1,
+            Some("jpg" | "jpeg") => stats.jpg += 1,
+            _ => {}
+        }
+
         pb.suspend(|| println!("{}", target.display()));
-        transfer_xmp_sidecar(src_path, &target, move_files, dry_run, &pb)?;
+        if transfer_xmp_sidecar(src_path, &target, move_files, dry_run, &pb)? {
+            stats.xmp += 1;
+        }
         pb.inc(1);
     }
     pb.finish_and_clear();
+
+    let verb = if move_files { "Moved" } else { "Copied" };
+    let total = stats.arw + stats.jpg + stats.xmp;
+    println!("{verb} {total} files — {} ARW, {} JPG, {} XMP", stats.arw, stats.jpg, stats.xmp);
+    if stats.duplicates > 0 {
+        println!("{} duplicate(s) skipped", stats.duplicates);
+    }
 
     if move_files && !dry_run {
         for entry in WalkDir::new(&src).contents_first(true)

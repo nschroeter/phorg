@@ -50,8 +50,11 @@ Compute blake3 checksum of source file, then:
 Rename counter increments until a free slot is found.
 
 ## Output
-- Each moved file: print destination path to stdout
+- Each copied/moved file: print destination path to stdout
 - Skipped / renamed / errors: log to stderr
+- After processing: print a summary line to stdout:
+  - `Copied/Moved N files — X ARW, Y JPG, Z XMP`
+  - `N duplicate(s) skipped` (only if duplicates were detected)
 
 ## Progress display
 - A progress bar shows `[n/total] current_filename` while processing
