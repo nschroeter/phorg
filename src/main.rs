@@ -66,6 +66,26 @@ fn resolve_conflict(base: &Path) -> PathBuf {
     }
 }
 
+fn move_xmp_sidecar(src_photo: &Path, dest_photo: &Path) -> Result<()> {
+    let mut xmp_filename = src_photo.file_name().unwrap().to_os_string();
+    xmp_filename.push(".xmp");
+    let xmp_src = src_photo.with_file_name(&xmp_filename);
+    if !xmp_src.exists() {
+        return Ok(());
+    }
+    let mut xmp_dest = dest_photo.parent().unwrap().join(&xmp_filename);
+    if xmp_dest.exists() {
+        if checksum(&xmp_src)? == checksum(&xmp_dest)? {
+            eprintln!("SKIP (duplicate): {}", xmp_src.display());
+            return Ok(());
+        }
+        xmp_dest = resolve_conflict(&xmp_dest);
+        eprintln!("RENAME conflict -> {}", xmp_dest.file_name().unwrap_or_default().to_string_lossy());
+    }
+    fs::rename(&xmp_src, &xmp_dest)
+        .with_context(|| format!("move {} -> {}", xmp_src.display(), xmp_dest.display()))
+}
+
 fn is_target(path: &Path) -> bool {
     matches!(
         path.extension().and_then(|e| e.to_str()).map(|e| e.to_ascii_lowercase()).as_deref(),
@@ -119,6 +139,7 @@ fn main() -> Result<()> {
             .with_context(|| format!("move {} -> {}", src_path.display(), target.display()))?;
 
         println!("{}", target.display());
+        move_xmp_sidecar(src_path, &target)?;
     }
 
     for entry in WalkDir::new(&src).contents_first(true)

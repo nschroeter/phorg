@@ -200,6 +200,36 @@ fn test_unicode_parent_folder() {
 }
 
 #[test]
+fn test_xmp_moved_with_photo() {
+    let tmp = tempfile::tempdir().unwrap();
+    let src = tmp.path().join("src");
+    let dest = tmp.path().join("dest");
+    fs::create_dir_all(&dest).unwrap();
+    write(&src.join("A1_0001.ARW"), &make_arw("2026:06:13 10:00:00"));
+    write(&src.join("A1_0001.ARW.xmp"), b"<xmp/>");
+
+    let status = Command::new(binary()).args([&src, &dest]).status().unwrap();
+    assert!(status.success());
+    assert!(dest.join("2026/06/13/A1_0001.ARW").exists());
+    assert!(dest.join("2026/06/13/A1_0001.ARW.xmp").exists());
+}
+
+#[test]
+fn test_xmp_not_moved_when_photo_skipped() {
+    let tmp = tempfile::tempdir().unwrap();
+    let src = tmp.path().join("src");
+    let dest = tmp.path().join("dest");
+    fs::create_dir_all(&dest).unwrap();
+    write(&src.join("NO_EXIF.ARW"), &make_arw_no_exif());
+    write(&src.join("NO_EXIF.ARW.xmp"), b"<xmp/>");
+
+    let status = Command::new(binary()).args([&src, &dest]).status().unwrap();
+    assert!(status.success());
+    assert!(!dest.join("2026/06/13/NO_EXIF.ARW.xmp").exists());
+    assert!(src.join("NO_EXIF.ARW.xmp").exists());
+}
+
+#[test]
 fn test_no_exif_skipped() {
     let tmp = tempfile::tempdir().unwrap();
     let src = tmp.path().join("src");

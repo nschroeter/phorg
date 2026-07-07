@@ -15,6 +15,12 @@ photo_import <src> <dest>
 - Process files with extensions: `.arw`, `.jpg`, `.jpeg` (case-insensitive)
 - All other files are ignored
 
+### XMP sidecar files
+- Darktable sidecar format: `<photo_filename>.xmp` (e.g. `A1_05140.ARW.xmp`)
+- When a photo is moved and a corresponding `.xmp` sidecar exists in the source, it is moved to the same destination directory
+- If the photo is skipped, the sidecar is not moved
+- Same duplicate / conflict handling applies to the sidecar
+
 ### Date extraction
 - Read EXIF tag `DateTimeOriginal` from each file
 - If tag is absent: skip file, log to stderr

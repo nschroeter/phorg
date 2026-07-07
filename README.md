@@ -13,6 +13,7 @@ Moves all `.ARW`, `.JPG`, and `.JPEG` files found recursively in `<src>` into `<
 ## Behavior
 
 - Files without an EXIF `DateTimeOriginal` tag are skipped (logged to stderr)
+- Darktable `.xmp` sidecar files (e.g. `A1_0001.ARW.xmp`) are moved alongside their photo if present
 - Duplicate files (same content) at the destination are skipped
 - Filename conflicts (same name, different content) are renamed: `A1_0001(1).ARW`, `A1_0001(2).ARW`, etc.
 - Empty source directories are removed after the import
