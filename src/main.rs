@@ -53,8 +53,7 @@ fn checksum(path: &Path) -> Result<blake3::Hash> {
 fn dest_path(dest_root: &Path, year: i32, month: u32, day: u32, filename: &str) -> PathBuf {
     dest_root
         .join(format!("{year:04}"))
-        .join(format!("{month:02}"))
-        .join(format!("{day:02}"))
+        .join(format!("{year:04}-{month:02}-{day:02}"))
         .join(filename)
 }
 

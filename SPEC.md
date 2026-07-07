@@ -28,9 +28,9 @@ photo_import <src> <dest> [-m | --move] [--dry-run]
 
 ### Destination structure
 ```
-<dest>/YYYY/MM/DD/<filename>
+<dest>/YYYY/YYYY-MM-DD/<filename>
 ```
-Example: `dest/2026/05/13/A1_05140.ARW`
+Example: `dest/2026/2026-05-13/A1_05140.ARW`
 
 ### Operation
 - Default: **copy** files to destination (source files are kept)

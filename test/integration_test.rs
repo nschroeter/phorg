@@ -87,13 +87,13 @@ fn test_organizes_by_date() {
     fs::create_dir_all(&dest).unwrap();
 
     let files = [
-        ("session1/A1_05473.ARW", "2026:06:13 10:00:00", "2026/06/13/A1_05473.ARW"),
-        ("session2/A1_05479.ARW", "2026:06:14 10:00:00", "2026/06/14/A1_05479.ARW"),
-        ("session3/A1_05704.ARW", "2026:06:16 10:00:00", "2026/06/16/A1_05704.ARW"),
-        ("session4/A1_06034.ARW", "2026:06:20 10:00:00", "2026/06/20/A1_06034.ARW"),
-        ("session5/A1_06156.ARW", "2026:06:25 10:00:00", "2026/06/25/A1_06156.ARW"),
-        ("session6/A1_06172.ARW", "2026:06:30 10:00:00", "2026/06/30/A1_06172.ARW"),
-        ("session7/A1_06278.ARW", "2026:07:06 10:00:00", "2026/07/06/A1_06278.ARW"),
+        ("session1/A1_05473.ARW", "2026:06:13 10:00:00", "2026/2026-06-13/A1_05473.ARW"),
+        ("session2/A1_05479.ARW", "2026:06:14 10:00:00", "2026/2026-06-14/A1_05479.ARW"),
+        ("session3/A1_05704.ARW", "2026:06:16 10:00:00", "2026/2026-06-16/A1_05704.ARW"),
+        ("session4/A1_06034.ARW", "2026:06:20 10:00:00", "2026/2026-06-20/A1_06034.ARW"),
+        ("session5/A1_06156.ARW", "2026:06:25 10:00:00", "2026/2026-06-25/A1_06156.ARW"),
+        ("session6/A1_06172.ARW", "2026:06:30 10:00:00", "2026/2026-06-30/A1_06172.ARW"),
+        ("session7/A1_06278.ARW", "2026:07:06 10:00:00", "2026/2026-07-06/A1_06278.ARW"),
     ];
     for (rel, date, _) in &files {
         write(&src.join(rel), &make_arw(date));
@@ -149,7 +149,7 @@ fn test_conflict_rename() {
     let tmp = tempfile::tempdir().unwrap();
     let src = tmp.path().join("src");
     let dest = tmp.path().join("dest");
-    let conflict_dir = dest.join("2026/06/13");
+    let conflict_dir = dest.join("2026/2026-06-13");
     fs::create_dir_all(&conflict_dir).unwrap();
     fs::write(conflict_dir.join("A1_0001.ARW"), b"different content").unwrap();
 
@@ -183,7 +183,7 @@ fn test_jpg_organized() {
 
     let status = Command::new(binary()).args([&src, &dest]).status().unwrap();
     assert!(status.success());
-    assert!(dest.join("2023/10/04/IMG_0001.JPG").exists());
+    assert!(dest.join("2023/2023-10-04/IMG_0001.JPG").exists());
 }
 
 #[test]
@@ -196,7 +196,7 @@ fn test_deeply_nested_src() {
 
     let status = Command::new(binary()).args([&src, &dest]).status().unwrap();
     assert!(status.success());
-    assert!(dest.join("2023/06/24/A1_0001.ARW").exists());
+    assert!(dest.join("2023/2023-06-24/A1_0001.ARW").exists());
 }
 
 #[test]
@@ -209,7 +209,7 @@ fn test_unicode_parent_folder() {
 
     let status = Command::new(binary()).args([&src, &dest]).status().unwrap();
     assert!(status.success());
-    assert!(dest.join("2023/08/06/A1_0001.ARW").exists());
+    assert!(dest.join("2023/2023-08-06/A1_0001.ARW").exists());
 }
 
 #[test]
@@ -223,8 +223,8 @@ fn test_xmp_moved_with_photo() {
 
     let status = Command::new(binary()).args([&src, &dest]).status().unwrap();
     assert!(status.success());
-    assert!(dest.join("2026/06/13/A1_0001.ARW").exists());
-    assert!(dest.join("2026/06/13/A1_0001.ARW.xmp").exists());
+    assert!(dest.join("2026/2026-06-13/A1_0001.ARW").exists());
+    assert!(dest.join("2026/2026-06-13/A1_0001.ARW.xmp").exists());
 }
 
 #[test]
@@ -238,7 +238,7 @@ fn test_xmp_not_moved_when_photo_skipped() {
 
     let status = Command::new(binary()).args([&src, &dest]).status().unwrap();
     assert!(status.success());
-    assert!(!dest.join("2026/06/13/NO_EXIF.ARW.xmp").exists());
+    assert!(!dest.join("2026/2026-06-13/NO_EXIF.ARW.xmp").exists());
     assert!(src.join("NO_EXIF.ARW.xmp").exists());
 }
 

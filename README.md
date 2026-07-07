@@ -1,6 +1,6 @@
 # phorg
 
-Organizes photos into a `YYYY/MM/DD` folder structure based on EXIF date.
+Organizes photos into a `YYYY/YYYY-MM-DD` folder structure based on EXIF date.
 
 ## Usage
 
