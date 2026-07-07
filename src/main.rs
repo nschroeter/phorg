@@ -1,8 +1,10 @@
 use anyhow::{Context, Result};
 use clap::Parser;
+use indicatif::{ProgressBar, ProgressStyle};
 use std::fs;
 use std::io::BufReader;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 use walkdir::WalkDir;
 
 #[derive(Parser)]
@@ -68,7 +70,7 @@ fn resolve_conflict(base: &Path) -> PathBuf {
     }
 }
 
-fn move_xmp_sidecar(src_photo: &Path, dest_photo: &Path, dry_run: bool) -> Result<()> {
+fn move_xmp_sidecar(src_photo: &Path, dest_photo: &Path, dry_run: bool, pb: &ProgressBar) -> Result<()> {
     let mut xmp_filename = src_photo.file_name().unwrap().to_os_string();
     xmp_filename.push(".xmp");
     let xmp_src = src_photo.with_file_name(&xmp_filename);
@@ -78,11 +80,11 @@ fn move_xmp_sidecar(src_photo: &Path, dest_photo: &Path, dry_run: bool) -> Resul
     let mut xmp_dest = dest_photo.parent().unwrap().join(&xmp_filename);
     if xmp_dest.exists() {
         if checksum(&xmp_src)? == checksum(&xmp_dest)? {
-            eprintln!("SKIP (duplicate): {}", xmp_src.display());
+            pb.suspend(|| eprintln!("SKIP (duplicate): {}", xmp_src.display()));
             return Ok(());
         }
         xmp_dest = resolve_conflict(&xmp_dest);
-        eprintln!("RENAME conflict -> {}", xmp_dest.file_name().unwrap_or_default().to_string_lossy());
+        pb.suspend(|| eprintln!("RENAME conflict -> {}", xmp_dest.file_name().unwrap_or_default().to_string_lossy()));
     }
     if !dry_run {
         fs::rename(&xmp_src, &xmp_dest)
@@ -109,17 +111,29 @@ fn main() -> Result<()> {
         "dest must not be inside src"
     );
 
-    for entry in WalkDir::new(&src)
+    let entries: Vec<_> = WalkDir::new(&src)
         .into_iter()
         .filter_map(|e| e.ok())
         .filter(|e| e.file_type().is_file() && is_target(e.path()))
-    {
+        .collect();
+
+    let pb = ProgressBar::new(entries.len() as u64);
+    pb.set_style(
+        ProgressStyle::with_template("{spinner:.dim} [{bar:40}] {pos}/{len} {msg}")
+            .unwrap()
+            .tick_chars("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏ "),
+    );
+    pb.enable_steady_tick(Duration::from_millis(100));
+
+    for entry in &entries {
         let src_path = entry.path();
+        pb.set_message(src_path.file_name().and_then(|n| n.to_str()).unwrap_or_default().to_string());
 
         let (y, m, d) = match exif_date(src_path) {
             Some(date) => date,
             None => {
-                eprintln!("SKIP (no EXIF date): {}", src_path.display());
+                pb.suspend(|| eprintln!("SKIP (no EXIF date): {}", src_path.display()));
+                pb.inc(1);
                 continue;
             }
         };
@@ -131,11 +145,12 @@ fn main() -> Result<()> {
             let src_hash = checksum(src_path)?;
             let dest_hash = checksum(&target)?;
             if src_hash == dest_hash {
-                eprintln!("SKIP (duplicate): {}", src_path.display());
+                pb.suspend(|| eprintln!("SKIP (duplicate): {}", src_path.display()));
+                pb.inc(1);
                 continue;
             }
             target = resolve_conflict(&target);
-            eprintln!("RENAME conflict -> {}", target.file_name().unwrap_or_default().to_string_lossy());
+            pb.suspend(|| eprintln!("RENAME conflict -> {}", target.file_name().unwrap_or_default().to_string_lossy()));
         }
 
         if !dry_run {
@@ -145,9 +160,11 @@ fn main() -> Result<()> {
                 .with_context(|| format!("move {} -> {}", src_path.display(), target.display()))?;
         }
 
-        println!("{}", target.display());
-        move_xmp_sidecar(src_path, &target, dry_run)?;
+        pb.suspend(|| println!("{}", target.display()));
+        move_xmp_sidecar(src_path, &target, dry_run, &pb)?;
+        pb.inc(1);
     }
+    pb.finish_and_clear();
 
     if !dry_run {
         for entry in WalkDir::new(&src).contents_first(true)

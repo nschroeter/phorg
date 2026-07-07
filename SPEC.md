@@ -51,7 +51,12 @@ Rename counter increments until a free slot is found.
 - Each moved file: print destination path to stdout
 - Skipped / renamed / errors: log to stderr
 
+## Progress display
+- A progress bar shows `[n/total] current_filename` while processing
+- SKIP / RENAME / error messages are printed above the bar so they don't corrupt it
+
+
 ## Implementation
 - Language: Rust
 - Single binary, single `src/main.rs`
-- Dependencies: `clap`, `walkdir`, `kamadak-exif`, `blake3`, `anyhow`
+- Dependencies: `clap`, `walkdir`, `kamadak-exif`, `blake3`, `anyhow`, `indicatif`
