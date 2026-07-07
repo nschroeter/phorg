@@ -1,0 +1,18 @@
+[package]
+name = "phorg"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+walkdir = "2"
+kamadak-exif = "0.5"
+blake3 = "1"
+anyhow = "1"
+
+[dev-dependencies]
+tempfile = "3"
+
+[[test]]
+name = "integration_test"
+path = "test/integration_test.rs"

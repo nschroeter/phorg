@@ -1,0 +1,214 @@
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::process::Command;
+
+fn binary() -> PathBuf {
+    PathBuf::from(env!("CARGO_BIN_EXE_phorg"))
+}
+
+/// Minimal TIFF with a single DateTimeOriginal tag in an Exif sub-IFD.
+/// date: "YYYY:MM:DD HH:MM:SS" (exactly 19 chars)
+fn make_arw(date: &str) -> Vec<u8> {
+    assert_eq!(date.len(), 19);
+    let mut date_bytes = date.as_bytes().to_vec();
+    date_bytes.push(0); // null-terminate → 20 bytes
+    let mut b = Vec::new();
+    b.extend_from_slice(b"II");
+    b.extend_from_slice(&42u16.to_le_bytes());
+    b.extend_from_slice(&8u32.to_le_bytes()); // IFD0 at offset 8
+    // IFD0: 1 entry — ExifIFD pointer
+    b.extend_from_slice(&1u16.to_le_bytes());
+    b.extend_from_slice(&0x8769u16.to_le_bytes()); // ExifIFD tag
+    b.extend_from_slice(&4u16.to_le_bytes());       // type LONG
+    b.extend_from_slice(&1u32.to_le_bytes());
+    b.extend_from_slice(&26u32.to_le_bytes()); // ExifIFD at offset 26
+    b.extend_from_slice(&0u32.to_le_bytes());  // next IFD = 0
+    // ExifIFD at offset 26: 1 entry — DateTimeOriginal
+    b.extend_from_slice(&1u16.to_le_bytes());
+    b.extend_from_slice(&0x9003u16.to_le_bytes()); // DateTimeOriginal
+    b.extend_from_slice(&2u16.to_le_bytes());       // type ASCII
+    b.extend_from_slice(&20u32.to_le_bytes());
+    b.extend_from_slice(&44u32.to_le_bytes()); // string at offset 44
+    b.extend_from_slice(&0u32.to_le_bytes());  // next IFD = 0
+    b.extend_from_slice(&date_bytes);
+    b
+}
+
+/// Minimal JPEG with an APP1/Exif segment containing the same TIFF structure.
+fn make_jpeg(date: &str) -> Vec<u8> {
+    let tiff = make_arw(date);
+    let app1_len = (2 + 6 + tiff.len()) as u16;
+    let mut b = Vec::new();
+    b.extend_from_slice(&[0xFF, 0xD8]); // SOI
+    b.extend_from_slice(&[0xFF, 0xE1]); // APP1
+    b.extend_from_slice(&app1_len.to_be_bytes());
+    b.extend_from_slice(b"Exif\0\0");
+    b.extend_from_slice(&tiff);
+    b.extend_from_slice(&[0xFF, 0xD9]); // EOI
+    b
+}
+
+/// Minimal TIFF with no DateTimeOriginal (empty IFD0).
+fn make_arw_no_exif() -> Vec<u8> {
+    let mut b = Vec::new();
+    b.extend_from_slice(b"II");
+    b.extend_from_slice(&42u16.to_le_bytes());
+    b.extend_from_slice(&8u32.to_le_bytes());
+    b.extend_from_slice(&0u16.to_le_bytes()); // 0 entries
+    b.extend_from_slice(&0u32.to_le_bytes()); // next IFD = 0
+    b
+}
+
+fn write(path: &Path, data: &[u8]) {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).unwrap();
+    }
+    fs::write(path, data).unwrap();
+}
+
+#[test]
+fn test_organizes_by_date() {
+    let tmp = tempfile::tempdir().unwrap();
+    let src = tmp.path().join("src");
+    let dest = tmp.path().join("dest");
+    fs::create_dir_all(&dest).unwrap();
+
+    let files = [
+        ("session1/A1_05473.ARW", "2026:06:13 10:00:00", "2026/06/13/A1_05473.ARW"),
+        ("session2/A1_05479.ARW", "2026:06:14 10:00:00", "2026/06/14/A1_05479.ARW"),
+        ("session3/A1_05704.ARW", "2026:06:16 10:00:00", "2026/06/16/A1_05704.ARW"),
+        ("session4/A1_06034.ARW", "2026:06:20 10:00:00", "2026/06/20/A1_06034.ARW"),
+        ("session5/A1_06156.ARW", "2026:06:25 10:00:00", "2026/06/25/A1_06156.ARW"),
+        ("session6/A1_06172.ARW", "2026:06:30 10:00:00", "2026/06/30/A1_06172.ARW"),
+        ("session7/A1_06278.ARW", "2026:07:06 10:00:00", "2026/07/06/A1_06278.ARW"),
+    ];
+    for (rel, date, _) in &files {
+        write(&src.join(rel), &make_arw(date));
+    }
+
+    let status = Command::new(binary()).args([&src, &dest]).status().unwrap();
+    assert!(status.success());
+
+    for (_, _, expected) in &files {
+        assert!(dest.join(expected).exists(), "missing: {expected}");
+    }
+}
+
+#[test]
+fn test_source_dirs_cleaned() {
+    let tmp = tempfile::tempdir().unwrap();
+    let src = tmp.path().join("src");
+    let dest = tmp.path().join("dest");
+    fs::create_dir_all(&dest).unwrap();
+    write(&src.join("session/A1_0001.ARW"), &make_arw("2026:06:13 10:00:00"));
+
+    Command::new(binary()).args([&src, &dest]).status().unwrap();
+
+    let subdirs: Vec<_> = walkdir::WalkDir::new(&src)
+        .min_depth(1)
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_type().is_dir())
+        .collect();
+    assert!(subdirs.is_empty(), "leftover dirs: {subdirs:?}");
+}
+
+#[test]
+fn test_duplicate_skip() {
+    let tmp = tempfile::tempdir().unwrap();
+    let src = tmp.path().join("src");
+    let dest = tmp.path().join("dest");
+    fs::create_dir_all(&dest).unwrap();
+    let data = make_arw("2026:06:13 10:00:00");
+
+    write(&src.join("A1_0001.ARW"), &data);
+    Command::new(binary()).args([&src, &dest]).status().unwrap();
+
+    write(&src.join("A1_0001.ARW"), &data);
+    let output = Command::new(binary()).args([&src, &dest]).output().unwrap();
+    assert!(output.status.success());
+    assert!(output.stdout.is_empty());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("SKIP (duplicate)"));
+}
+
+#[test]
+fn test_conflict_rename() {
+    let tmp = tempfile::tempdir().unwrap();
+    let src = tmp.path().join("src");
+    let dest = tmp.path().join("dest");
+    let conflict_dir = dest.join("2026/06/13");
+    fs::create_dir_all(&conflict_dir).unwrap();
+    fs::write(conflict_dir.join("A1_0001.ARW"), b"different content").unwrap();
+
+    write(&src.join("A1_0001.ARW"), &make_arw("2026:06:13 10:00:00"));
+
+    let output = Command::new(binary()).args([&src, &dest]).output().unwrap();
+    assert!(output.status.success());
+    assert!(conflict_dir.join("A1_0001(1).ARW").exists());
+    assert_eq!(fs::read(conflict_dir.join("A1_0001.ARW")).unwrap(), b"different content");
+}
+
+#[test]
+fn test_dest_inside_src_rejected() {
+    let tmp = tempfile::tempdir().unwrap();
+    let src = tmp.path().join("src");
+    let dest = src.join("dest");
+    fs::create_dir_all(&dest).unwrap();
+
+    let output = Command::new(binary()).args([&src, &dest]).output().unwrap();
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("dest must not be inside src"));
+}
+
+#[test]
+fn test_jpg_organized() {
+    let tmp = tempfile::tempdir().unwrap();
+    let src = tmp.path().join("src");
+    let dest = tmp.path().join("dest");
+    fs::create_dir_all(&dest).unwrap();
+    write(&src.join("IMG_0001.JPG"), &make_jpeg("2023:10:04 13:38:37"));
+
+    let status = Command::new(binary()).args([&src, &dest]).status().unwrap();
+    assert!(status.success());
+    assert!(dest.join("2023/10/04/IMG_0001.JPG").exists());
+}
+
+#[test]
+fn test_deeply_nested_src() {
+    let tmp = tempfile::tempdir().unwrap();
+    let src = tmp.path().join("src");
+    let dest = tmp.path().join("dest");
+    fs::create_dir_all(&dest).unwrap();
+    write(&src.join("aaa/2023-06-24/A1_0001.ARW"), &make_arw("2023:06:24 12:05:39"));
+
+    let status = Command::new(binary()).args([&src, &dest]).status().unwrap();
+    assert!(status.success());
+    assert!(dest.join("2023/06/24/A1_0001.ARW").exists());
+}
+
+#[test]
+fn test_unicode_parent_folder() {
+    let tmp = tempfile::tempdir().unwrap();
+    let src = tmp.path().join("src");
+    let dest = tmp.path().join("dest");
+    fs::create_dir_all(&dest).unwrap();
+    write(&src.join("aaa/2023-08-ß6/A1_0001.ARW"), &make_arw("2023:08:06 18:14:47"));
+
+    let status = Command::new(binary()).args([&src, &dest]).status().unwrap();
+    assert!(status.success());
+    assert!(dest.join("2023/08/06/A1_0001.ARW").exists());
+}
+
+#[test]
+fn test_no_exif_skipped() {
+    let tmp = tempfile::tempdir().unwrap();
+    let src = tmp.path().join("src");
+    let dest = tmp.path().join("dest");
+    fs::create_dir_all(&dest).unwrap();
+    write(&src.join("NO_EXIF.ARW"), &make_arw_no_exif());
+
+    let output = Command::new(binary()).args([&src, &dest]).output().unwrap();
+    assert!(output.status.success());
+    assert!(output.stdout.is_empty());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("SKIP (no EXIF date)"));
+}
