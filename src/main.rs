@@ -58,17 +58,19 @@ fn read_full(r: &mut impl Read, buf: &mut [u8]) -> std::io::Result<usize> {
     Ok(n)
 }
 
-fn same_content(a: &Path, b: &Path) -> Result<bool> {
-    let len_a = fs::metadata(a).with_context(|| format!("stat {}", a.display()))?.len();
-    let len_b = fs::metadata(b).with_context(|| format!("stat {}", b.display()))?.len();
+const COMPARE_BUF_SIZE: usize = 1024 * 1024;
+
+/// Compares file content given already-known lengths, avoiding a second stat
+/// of paths the caller has just fetched metadata for (e.g. an exists() check).
+fn same_content(a: &Path, len_a: u64, b: &Path, len_b: u64) -> Result<bool> {
     if len_a != len_b {
         return Ok(false);
     }
 
     let mut file_a = fs::File::open(a).with_context(|| format!("read {}", a.display()))?;
     let mut file_b = fs::File::open(b).with_context(|| format!("read {}", b.display()))?;
-    let mut buf_a = [0u8; 64 * 1024];
-    let mut buf_b = [0u8; 64 * 1024];
+    let mut buf_a = [0u8; COMPARE_BUF_SIZE];
+    let mut buf_b = [0u8; COMPARE_BUF_SIZE];
     loop {
         let n = read_full(&mut file_a, &mut buf_a).with_context(|| format!("read {}", a.display()))?;
         let m = read_full(&mut file_b, &mut buf_b).with_context(|| format!("read {}", b.display()))?;
@@ -121,12 +123,12 @@ fn transfer_xmp_sidecar(src_photo: &Path, dest_photo: &Path, move_files: bool, d
     let mut xmp_filename = src_photo.file_name().unwrap().to_os_string();
     xmp_filename.push(".xmp");
     let xmp_src = src_photo.with_file_name(&xmp_filename);
-    if !xmp_src.exists() {
+    let Ok(xmp_src_meta) = fs::metadata(&xmp_src) else {
         return Ok(false);
-    }
+    };
     let mut xmp_dest = dest_photo.parent().unwrap().join(&xmp_filename);
-    if xmp_dest.exists() {
-        if same_content(&xmp_src, &xmp_dest)? {
+    if let Ok(xmp_dest_meta) = fs::metadata(&xmp_dest) {
+        if same_content(&xmp_src, xmp_src_meta.len(), &xmp_dest, xmp_dest_meta.len())? {
             pb.suspend(|| eprintln!("SKIP (duplicate): {}", xmp_src.display()));
             return Ok(false);
         }
@@ -229,8 +231,9 @@ fn main() -> Result<()> {
         let filename = src_path.file_name().and_then(|n| n.to_str()).unwrap_or_default();
         let mut target = dest_path(&dest, y, m, d, filename);
 
-        if target.exists() {
-            if same_content(src_path, &target)? {
+        if let Ok(target_meta) = fs::metadata(&target) {
+            let src_meta = fs::metadata(src_path).with_context(|| format!("stat {}", src_path.display()))?;
+            if same_content(src_path, src_meta.len(), &target, target_meta.len())? {
                 let src_str = src_path.display().to_string();
                 let dest_str = target.display().to_string();
                 pb.suspend(|| eprintln!("SKIP (duplicate): {src_str}"));
