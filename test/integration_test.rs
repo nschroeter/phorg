@@ -121,6 +121,22 @@ fn test_dest_created_when_missing() {
 }
 
 #[test]
+fn test_multiple_files_same_date_share_dest_folder() {
+    let tmp = tempfile::tempdir().unwrap();
+    let src = tmp.path().join("src");
+    let dest = tmp.path().join("dest");
+    fs::create_dir_all(&dest).unwrap();
+
+    write(&src.join("A1_0001.ARW"), &make_arw("2026:06:13 10:00:00"));
+    write(&src.join("A1_0002.ARW"), &make_arw("2026:06:13 11:30:00"));
+
+    let status = Command::new(binary()).args([&src, &dest]).status().unwrap();
+    assert!(status.success());
+    assert!(dest.join("2026/2026-06-13/A1_0001.ARW").exists());
+    assert!(dest.join("2026/2026-06-13/A1_0002.ARW").exists());
+}
+
+#[test]
 fn test_dry_run_makes_no_changes() {
     let tmp = tempfile::tempdir().unwrap();
     let src = tmp.path().join("src");
