@@ -173,6 +173,19 @@ fn test_source_dirs_cleaned() {
 }
 
 #[test]
+fn test_multi_level_nested_dirs_cleaned_after_move() {
+    let tmp = tempfile::tempdir().unwrap();
+    let src = tmp.path().join("src");
+    let dest = tmp.path().join("dest");
+    fs::create_dir_all(&dest).unwrap();
+    write(&src.join("a/b/c/A1_0001.ARW"), &make_arw("2026:06:13 10:00:00"));
+
+    let output = run_move(&src, &dest);
+    assert!(output.status.success());
+    assert!(!src.join("a").exists(), "nested empty dirs must be fully cleaned up, not just the leaf");
+}
+
+#[test]
 fn test_duplicate_skip() {
     let tmp = tempfile::tempdir().unwrap();
     let src = tmp.path().join("src");
