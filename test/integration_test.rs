@@ -362,6 +362,26 @@ fn test_xmp_conflict_rename() {
 }
 
 #[test]
+fn test_non_target_file_ignored() {
+    let tmp = tempfile::tempdir().unwrap();
+    let src = tmp.path().join("src");
+    let dest = tmp.path().join("dest");
+    fs::create_dir_all(&dest).unwrap();
+    write(&src.join("A1_0001.ARW"), &make_arw("2026:06:13 10:00:00"));
+    write(&src.join("notes.txt"), b"not a photo");
+
+    let output = Command::new(binary()).args([&src, &dest]).output().unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Copied 1 files"), "stdout: {stdout}");
+    assert!(src.join("notes.txt").exists(), "non-target file must be left in src");
+    assert!(
+        walkdir::WalkDir::new(&dest).into_iter().filter_map(|e| e.ok()).all(|e| e.file_name() != "notes.txt"),
+        "non-target file must not be copied to dest"
+    );
+}
+
+#[test]
 fn test_summary_counts() {
     let tmp = tempfile::tempdir().unwrap();
     let src = tmp.path().join("src");
