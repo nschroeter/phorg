@@ -266,6 +266,25 @@ fn test_jpg_organized() {
 }
 
 #[test]
+fn test_jpeg_and_mixed_case_extensions_organized() {
+    let tmp = tempfile::tempdir().unwrap();
+    let src = tmp.path().join("src");
+    let dest = tmp.path().join("dest");
+    fs::create_dir_all(&dest).unwrap();
+    write(&src.join("photo.jpeg"), &make_jpeg("2023:10:04 13:38:37"));
+    write(&src.join("photo2.Arw"), &make_arw("2023:10:04 13:38:37"));
+
+    let output = Command::new(binary()).args([&src, &dest]).output().unwrap();
+    assert!(output.status.success());
+    assert!(dest.join("2023/2023-10-04/photo.jpeg").exists());
+    assert!(dest.join("2023/2023-10-04/photo2.Arw").exists());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Copied 2 files"), "stdout: {stdout}");
+    assert!(stdout.contains("1 ARW"), "stdout: {stdout}");
+    assert!(stdout.contains("1 JPG"), "stdout: {stdout}");
+}
+
+#[test]
 fn test_deeply_nested_src() {
     let tmp = tempfile::tempdir().unwrap();
     let src = tmp.path().join("src");
