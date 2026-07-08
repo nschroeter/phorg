@@ -139,6 +139,12 @@ struct Stats {
     duplicates: u32,
 }
 
+fn is_target(path: &Path) -> bool {
+    path.extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| e.eq_ignore_ascii_case("arw") || e.eq_ignore_ascii_case("jpg") || e.eq_ignore_ascii_case("jpeg"))
+}
+
 fn target_ext(path: &Path) -> Option<String> {
     let ext = path.extension().and_then(|e| e.to_str())?.to_ascii_lowercase();
     matches!(ext.as_str(), "arw" | "jpg" | "jpeg").then_some(ext)
@@ -163,7 +169,7 @@ fn main() -> Result<()> {
         anyhow::ensure!(input.trim() == "yes", "aborted");
     }
 
-    let is_target_file = |e: &walkdir::DirEntry| e.file_type().is_file() && target_ext(e.path()).is_some();
+    let is_target_file = |e: &walkdir::DirEntry| e.file_type().is_file() && is_target(e.path());
 
     let total = WalkDir::new(&src)
         .into_iter()
