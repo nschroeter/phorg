@@ -241,6 +241,78 @@ fn test_conflict_rename_second_collision() {
 }
 
 #[test]
+fn test_conflict_same_length_different_content() {
+    let tmp = tempfile::tempdir().unwrap();
+    let src = tmp.path().join("src");
+    let dest = tmp.path().join("dest");
+    let conflict_dir = dest.join("2026/2026-06-13");
+    fs::create_dir_all(&conflict_dir).unwrap();
+
+    let data = make_arw("2026:06:13 10:00:00");
+    let mut altered = data.clone();
+    *altered.last_mut().unwrap() ^= 0xFF; // same length, one byte differs
+
+    fs::write(conflict_dir.join("A1_0001.ARW"), &altered).unwrap();
+    write(&src.join("A1_0001.ARW"), &data);
+
+    let output = Command::new(binary()).args([&src, &dest]).output().unwrap();
+    assert!(output.status.success());
+    assert!(
+        conflict_dir.join("A1_0001(1).ARW").exists(),
+        "same-length differing content must be treated as a conflict, not a duplicate"
+    );
+    assert_eq!(fs::read(conflict_dir.join("A1_0001.ARW")).unwrap(), altered);
+    assert_eq!(fs::read(conflict_dir.join("A1_0001(1).ARW")).unwrap(), data);
+}
+
+#[test]
+fn test_duplicate_skip_across_chunk_boundary() {
+    let tmp = tempfile::tempdir().unwrap();
+    let src = tmp.path().join("src");
+    let dest = tmp.path().join("dest");
+    fs::create_dir_all(&dest).unwrap();
+
+    let mut data = make_arw("2026:06:13 10:00:00");
+    data.extend(std::iter::repeat_n(0xCDu8, 200 * 1024)); // exceed the 64KB compare buffer
+
+    write(&src.join("A1_0001.ARW"), &data);
+    Command::new(binary()).args([&src, &dest]).status().unwrap();
+
+    write(&src.join("A1_0001.ARW"), &data);
+    let output = Command::new(binary()).args([&src, &dest]).output().unwrap();
+    assert!(output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("SKIP (duplicate)"));
+}
+
+#[test]
+fn test_conflict_difference_past_chunk_boundary() {
+    let tmp = tempfile::tempdir().unwrap();
+    let src = tmp.path().join("src");
+    let dest = tmp.path().join("dest");
+    let conflict_dir = dest.join("2026/2026-06-13");
+    fs::create_dir_all(&conflict_dir).unwrap();
+
+    let base = make_arw("2026:06:13 10:00:00");
+    let mut dest_data = base.clone();
+    dest_data.extend(std::iter::repeat_n(0xCDu8, 200 * 1024));
+
+    let mut src_data = base;
+    src_data.extend(std::iter::repeat_n(0xCDu8, 200 * 1024));
+    let last = src_data.len() - 1;
+    src_data[last] ^= 0xFF; // same length, differs only past the first 64KB chunk
+
+    fs::write(conflict_dir.join("A1_0001.ARW"), &dest_data).unwrap();
+    write(&src.join("A1_0001.ARW"), &src_data);
+
+    let output = Command::new(binary()).args([&src, &dest]).output().unwrap();
+    assert!(output.status.success());
+    assert!(
+        conflict_dir.join("A1_0001(1).ARW").exists(),
+        "must detect a difference past the first chunk, not report a false duplicate"
+    );
+}
+
+#[test]
 fn test_dest_inside_src_rejected() {
     let tmp = tempfile::tempdir().unwrap();
     let src = tmp.path().join("src");
