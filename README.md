@@ -1,5 +1,7 @@
 # phorg
 
+[![test](https://github.com/nschroeter/phorg/actions/workflows/test.yml/badge.svg)](https://github.com/nschroeter/phorg/actions/workflows/test.yml)
+
 Organizes photos into a `YYYY/YYYY-MM-DD` folder structure based on EXIF date.
 
 ## Usage
