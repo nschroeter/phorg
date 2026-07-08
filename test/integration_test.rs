@@ -186,6 +186,24 @@ fn test_multi_level_nested_dirs_cleaned_after_move() {
 }
 
 #[test]
+fn test_unrelated_empty_dir_survives_move() {
+    let tmp = tempfile::tempdir().unwrap();
+    let src = tmp.path().join("src");
+    let dest = tmp.path().join("dest");
+    fs::create_dir_all(&dest).unwrap();
+    write(&src.join("session/A1_0001.ARW"), &make_arw("2026:06:13 10:00:00"));
+    fs::create_dir_all(src.join("unrelated-empty-dir")).unwrap();
+
+    let output = run_move(&src, &dest);
+    assert!(output.status.success());
+    assert!(!src.join("session").exists(), "dir a file was moved out of should still be cleaned up");
+    assert!(
+        src.join("unrelated-empty-dir").exists(),
+        "dir with no moved files must be left alone, even if empty"
+    );
+}
+
+#[test]
 fn test_duplicate_skip() {
     let tmp = tempfile::tempdir().unwrap();
     let src = tmp.path().join("src");
