@@ -49,7 +49,7 @@ fn exif_date(path: &Path) -> Option<(i32, u32, u32)> {
 fn checksum(path: &Path) -> Result<blake3::Hash> {
     let file = fs::File::open(path).with_context(|| format!("read {}", path.display()))?;
     let mut hasher = blake3::Hasher::new();
-    hasher.update_reader(BufReader::new(file)).with_context(|| format!("read {}", path.display()))?;
+    hasher.update_reader(file).with_context(|| format!("read {}", path.display()))?;
     Ok(hasher.finalize())
 }
 
@@ -121,11 +121,9 @@ struct Stats {
     duplicates: u32,
 }
 
-fn is_target(path: &Path) -> bool {
-    matches!(
-        path.extension().and_then(|e| e.to_str()).map(|e| e.to_ascii_lowercase()).as_deref(),
-        Some("arw" | "jpg" | "jpeg")
-    )
+fn target_ext(path: &Path) -> Option<String> {
+    let ext = path.extension().and_then(|e| e.to_str())?.to_ascii_lowercase();
+    matches!(ext.as_str(), "arw" | "jpg" | "jpeg").then_some(ext)
 }
 
 fn main() -> Result<()> {
@@ -147,7 +145,7 @@ fn main() -> Result<()> {
         anyhow::ensure!(input.trim() == "yes", "aborted");
     }
 
-    let is_target_file = |e: &walkdir::DirEntry| e.file_type().is_file() && is_target(e.path());
+    let is_target_file = |e: &walkdir::DirEntry| e.file_type().is_file() && target_ext(e.path()).is_some();
 
     let total = WalkDir::new(&src)
         .into_iter()
@@ -170,9 +168,12 @@ fn main() -> Result<()> {
     let entries = WalkDir::new(&src)
         .into_iter()
         .filter_map(|e| e.ok())
-        .filter(is_target_file);
+        .filter_map(|e| {
+            let ext = (e.file_type().is_file()).then(|| target_ext(e.path())).flatten()?;
+            Some((e, ext))
+        });
 
-    for entry in entries {
+    for (entry, ext) in entries {
         let src_path = entry.path();
         pb.set_message(src_path.file_name().and_then(|n| n.to_str()).unwrap_or_default().to_string());
 
@@ -222,9 +223,9 @@ fn main() -> Result<()> {
             }
         }
 
-        match src_path.extension().and_then(|e| e.to_str()).map(|e| e.to_ascii_lowercase()).as_deref() {
-            Some("arw") => stats.arw += 1,
-            Some("jpg" | "jpeg") => stats.jpg += 1,
+        match ext.as_str() {
+            "arw" => stats.arw += 1,
+            "jpg" | "jpeg" => stats.jpg += 1,
             _ => {}
         }
 
