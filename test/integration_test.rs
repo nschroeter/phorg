@@ -146,6 +146,24 @@ fn test_duplicate_skip() {
 }
 
 #[test]
+fn test_move_duplicate_source_preserved() {
+    let tmp = tempfile::tempdir().unwrap();
+    let src = tmp.path().join("src");
+    let dest = tmp.path().join("dest");
+    fs::create_dir_all(&dest).unwrap();
+    let data = make_arw("2026:06:13 10:00:00");
+
+    write(&src.join("A1_0001.ARW"), &data);
+    run_move(&src, &dest);
+
+    write(&src.join("A1_0001.ARW"), &data);
+    let output = run_move(&src, &dest);
+    assert!(output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("SKIP (duplicate)"));
+    assert!(src.join("A1_0001.ARW").exists(), "duplicate source must not be moved/deleted");
+}
+
+#[test]
 fn test_conflict_rename() {
     let tmp = tempfile::tempdir().unwrap();
     let src = tmp.path().join("src");
@@ -279,6 +297,33 @@ fn test_summary_duplicates() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("1 duplicate(s) skipped"), "stdout: {stdout}");
     assert!(stdout.contains("Copied 0 files"), "stdout: {stdout}");
+}
+
+#[test]
+fn test_duplicate_log_file_written() {
+    let tmp = tempfile::tempdir().unwrap();
+    let src = tmp.path().join("src");
+    let dest = tmp.path().join("dest");
+    fs::create_dir_all(&dest).unwrap();
+    let data = make_arw("2026:06:13 10:00:00");
+    write(&src.join("A1_0001.ARW"), &data);
+
+    Command::new(binary()).args([&src, &dest]).current_dir(tmp.path()).status().unwrap();
+
+    let output = Command::new(binary()).args([&src, &dest]).current_dir(tmp.path()).output().unwrap();
+    assert!(output.status.success());
+
+    let log_files: Vec<_> = fs::read_dir(tmp.path())
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_name().to_string_lossy().starts_with("duplicates-log-"))
+        .collect();
+    assert_eq!(log_files.len(), 1, "expected exactly one duplicate log file");
+
+    let content = fs::read_to_string(log_files[0].path()).unwrap();
+    assert!(content.contains("A1_0001.ARW"), "log content: {content}");
+    assert!(content.contains("2026/2026-06-13/A1_0001.ARW"), "log content: {content}");
+    assert!(content.contains(" -> "), "log content: {content}");
 }
 
 #[test]
