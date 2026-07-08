@@ -3,7 +3,7 @@ use chrono::Local;
 use clap::Parser;
 use indicatif::{ProgressBar, ProgressStyle};
 use std::fs;
-use std::io::{BufReader, BufWriter, Write};
+use std::io::{BufReader, BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 use walkdir::WalkDir;
@@ -46,11 +46,15 @@ fn exif_date(path: &Path) -> Option<(i32, u32, u32)> {
     Some((parts[0].parse().ok()?, parts[1].parse().ok()?, parts[2].parse().ok()?))
 }
 
-fn checksum(path: &Path) -> Result<blake3::Hash> {
-    let file = fs::File::open(path).with_context(|| format!("read {}", path.display()))?;
-    let mut hasher = blake3::Hasher::new();
-    hasher.update_reader(file).with_context(|| format!("read {}", path.display()))?;
-    Ok(hasher.finalize())
+fn read_full(r: &mut impl Read, buf: &mut [u8]) -> std::io::Result<usize> {
+    let mut n = 0;
+    while n < buf.len() {
+        match r.read(&mut buf[n..])? {
+            0 => break,
+            read => n += read,
+        }
+    }
+    Ok(n)
 }
 
 fn same_content(a: &Path, b: &Path) -> Result<bool> {
@@ -59,7 +63,21 @@ fn same_content(a: &Path, b: &Path) -> Result<bool> {
     if len_a != len_b {
         return Ok(false);
     }
-    Ok(checksum(a)? == checksum(b)?)
+
+    let mut file_a = fs::File::open(a).with_context(|| format!("read {}", a.display()))?;
+    let mut file_b = fs::File::open(b).with_context(|| format!("read {}", b.display()))?;
+    let mut buf_a = [0u8; 64 * 1024];
+    let mut buf_b = [0u8; 64 * 1024];
+    loop {
+        let n = read_full(&mut file_a, &mut buf_a).with_context(|| format!("read {}", a.display()))?;
+        let m = read_full(&mut file_b, &mut buf_b).with_context(|| format!("read {}", b.display()))?;
+        if n != m || buf_a[..n] != buf_b[..m] {
+            return Ok(false);
+        }
+        if n == 0 {
+            return Ok(true);
+        }
+    }
 }
 
 fn dest_path(dest_root: &Path, year: i32, month: u32, day: u32, filename: &str) -> PathBuf {

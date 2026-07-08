@@ -7,7 +7,6 @@ edition = "2024"
 clap = { version = "4", features = ["derive"] }
 walkdir = "2"
 kamadak-exif = "0.5"
-blake3 = "1"
 anyhow = "1"
 indicatif = "0.17"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
