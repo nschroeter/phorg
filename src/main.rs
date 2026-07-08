@@ -147,13 +147,15 @@ fn main() -> Result<()> {
         anyhow::ensure!(input.trim() == "yes", "aborted");
     }
 
-    let entries: Vec<_> = WalkDir::new(&src)
+    let is_target_file = |e: &walkdir::DirEntry| e.file_type().is_file() && is_target(e.path());
+
+    let total = WalkDir::new(&src)
         .into_iter()
         .filter_map(|e| e.ok())
-        .filter(|e| e.file_type().is_file() && is_target(e.path()))
-        .collect();
+        .filter(is_target_file)
+        .count();
 
-    let pb = ProgressBar::new(entries.len() as u64);
+    let pb = ProgressBar::new(total as u64);
     pb.set_prefix(if move_files { "Moving" } else { "Copying" });
     pb.set_style(
         ProgressStyle::with_template("{spinner:.dim} {prefix} [{bar:40}] {pos}/{len} {msg}")?
@@ -163,7 +165,12 @@ fn main() -> Result<()> {
 
     let mut stats = Stats::default();
 
-    for entry in &entries {
+    let entries = WalkDir::new(&src)
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .filter(is_target_file);
+
+    for entry in entries {
         let src_path = entry.path();
         pb.set_message(src_path.file_name().and_then(|n| n.to_str()).unwrap_or_default().to_string());
 
