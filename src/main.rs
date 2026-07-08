@@ -203,6 +203,7 @@ fn main() -> Result<()> {
     let log_name = format!("duplicates-log-{}.log", Local::now().format("%Y-%m-%d_%H-%M-%S"));
     let mut dup_log: Option<BufWriter<fs::File>> = None;
     let mut touched_dirs: HashSet<PathBuf> = HashSet::new();
+    let mut created_dirs: HashSet<PathBuf> = HashSet::new();
 
     let entries = WalkDir::new(&src)
         .into_iter()
@@ -251,8 +252,11 @@ fn main() -> Result<()> {
         }
 
         if !dry_run {
-            fs::create_dir_all(target.parent().unwrap())
-                .with_context(|| format!("create dir {}", target.parent().unwrap().display()))?;
+            let target_dir = target.parent().unwrap();
+            if created_dirs.insert(target_dir.to_path_buf()) {
+                fs::create_dir_all(target_dir)
+                    .with_context(|| format!("create dir {}", target_dir.display()))?;
+            }
             if move_files {
                 fs::rename(src_path, &target)
                     .with_context(|| format!("move {} -> {}", src_path.display(), target.display()))?;
