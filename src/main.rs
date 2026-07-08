@@ -47,8 +47,19 @@ fn exif_date(path: &Path) -> Option<(i32, u32, u32)> {
 }
 
 fn checksum(path: &Path) -> Result<blake3::Hash> {
-    let data = fs::read(path).with_context(|| format!("read {}", path.display()))?;
-    Ok(blake3::hash(&data))
+    let file = fs::File::open(path).with_context(|| format!("read {}", path.display()))?;
+    let mut hasher = blake3::Hasher::new();
+    hasher.update_reader(BufReader::new(file)).with_context(|| format!("read {}", path.display()))?;
+    Ok(hasher.finalize())
+}
+
+fn same_content(a: &Path, b: &Path) -> Result<bool> {
+    let len_a = fs::metadata(a).with_context(|| format!("stat {}", a.display()))?.len();
+    let len_b = fs::metadata(b).with_context(|| format!("stat {}", b.display()))?.len();
+    if len_a != len_b {
+        return Ok(false);
+    }
+    Ok(checksum(a)? == checksum(b)?)
 }
 
 fn dest_path(dest_root: &Path, year: i32, month: u32, day: u32, filename: &str) -> PathBuf {
@@ -83,7 +94,7 @@ fn transfer_xmp_sidecar(src_photo: &Path, dest_photo: &Path, move_files: bool, d
     }
     let mut xmp_dest = dest_photo.parent().unwrap().join(&xmp_filename);
     if xmp_dest.exists() {
-        if checksum(&xmp_src)? == checksum(&xmp_dest)? {
+        if same_content(&xmp_src, &xmp_dest)? {
             pb.suspend(|| eprintln!("SKIP (duplicate): {}", xmp_src.display()));
             return Ok(false);
         }
@@ -169,9 +180,7 @@ fn main() -> Result<()> {
         let mut target = dest_path(&dest, y, m, d, filename);
 
         if target.exists() {
-            let src_hash = checksum(src_path)?;
-            let dest_hash = checksum(&target)?;
-            if src_hash == dest_hash {
+            if same_content(src_path, &target)? {
                 let src_str = src_path.display().to_string();
                 let dest_str = target.display().to_string();
                 pb.suspend(|| eprintln!("SKIP (duplicate): {src_str}"));
