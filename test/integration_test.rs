@@ -303,6 +303,46 @@ fn test_xmp_not_moved_when_photo_skipped() {
 }
 
 #[test]
+fn test_xmp_duplicate_skipped() {
+    let tmp = tempfile::tempdir().unwrap();
+    let src = tmp.path().join("src");
+    let dest = tmp.path().join("dest");
+    let dest_dir = dest.join("2026/2026-06-13");
+    fs::create_dir_all(&dest_dir).unwrap();
+    write(&dest_dir.join("A1_0001.ARW.xmp"), b"<xmp/>");
+
+    write(&src.join("A1_0001.ARW"), &make_arw("2026:06:13 10:00:00"));
+    write(&src.join("A1_0001.ARW.xmp"), b"<xmp/>");
+
+    let output = Command::new(binary()).args([&src, &dest]).output().unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Copied 1 files"), "stdout: {stdout}");
+    assert!(stdout.contains("0 XMP"), "stdout: {stdout}");
+    assert!(String::from_utf8_lossy(&output.stderr).contains("SKIP (duplicate)"));
+    assert!(dest_dir.join("A1_0001.ARW").exists());
+}
+
+#[test]
+fn test_xmp_conflict_rename() {
+    let tmp = tempfile::tempdir().unwrap();
+    let src = tmp.path().join("src");
+    let dest = tmp.path().join("dest");
+    let dest_dir = dest.join("2026/2026-06-13");
+    fs::create_dir_all(&dest_dir).unwrap();
+    write(&dest_dir.join("A1_0001.ARW.xmp"), b"different xmp content");
+
+    write(&src.join("A1_0001.ARW"), &make_arw("2026:06:13 10:00:00"));
+    write(&src.join("A1_0001.ARW.xmp"), b"<xmp-new/>");
+
+    let output = Command::new(binary()).args([&src, &dest]).output().unwrap();
+    assert!(output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("RENAME conflict"));
+    assert_eq!(fs::read(dest_dir.join("A1_0001.ARW.xmp")).unwrap(), b"different xmp content");
+    assert_eq!(fs::read(dest_dir.join("A1_0001.ARW(1).xmp")).unwrap(), b"<xmp-new/>");
+}
+
+#[test]
 fn test_summary_counts() {
     let tmp = tempfile::tempdir().unwrap();
     let src = tmp.path().join("src");
