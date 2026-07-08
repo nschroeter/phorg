@@ -235,6 +235,26 @@ fn test_conflict_rename() {
 }
 
 #[test]
+fn test_conflict_rename_in_move_mode() {
+    let tmp = tempfile::tempdir().unwrap();
+    let src = tmp.path().join("src");
+    let dest = tmp.path().join("dest");
+    let conflict_dir = dest.join("2026/2026-06-13");
+    fs::create_dir_all(&conflict_dir).unwrap();
+    fs::write(conflict_dir.join("A1_0001.ARW"), b"different content").unwrap();
+
+    let data = make_arw("2026:06:13 10:00:00");
+    write(&src.join("A1_0001.ARW"), &data);
+
+    let output = run_move(&src, &dest);
+    assert!(output.status.success());
+    assert!(conflict_dir.join("A1_0001(1).ARW").exists());
+    assert_eq!(fs::read(conflict_dir.join("A1_0001.ARW")).unwrap(), b"different content");
+    assert_eq!(fs::read(conflict_dir.join("A1_0001(1).ARW")).unwrap(), data);
+    assert!(!src.join("A1_0001.ARW").exists(), "src file must be moved, not copied, into the renamed path");
+}
+
+#[test]
 fn test_conflict_rename_second_collision() {
     let tmp = tempfile::tempdir().unwrap();
     let src = tmp.path().join("src");
