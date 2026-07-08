@@ -108,6 +108,23 @@ fn test_organizes_by_date() {
 }
 
 #[test]
+fn test_dry_run_makes_no_changes() {
+    let tmp = tempfile::tempdir().unwrap();
+    let src = tmp.path().join("src");
+    let dest = tmp.path().join("dest");
+    fs::create_dir_all(&dest).unwrap();
+    write(&src.join("A1_0001.ARW"), &make_arw("2026:06:13 10:00:00"));
+
+    let output = Command::new(binary()).args([&src, &dest, Path::new("--dry-run")]).output().unwrap();
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("2026/2026-06-13/A1_0001.ARW"), "expected dest path in stdout: {stdout}");
+    assert!(!dest.join("2026/2026-06-13/A1_0001.ARW").exists(), "dry-run must not create dest file");
+    assert!(src.join("A1_0001.ARW").exists(), "dry-run must not touch src file");
+}
+
+#[test]
 fn test_source_dirs_cleaned() {
     let tmp = tempfile::tempdir().unwrap();
     let src = tmp.path().join("src");
