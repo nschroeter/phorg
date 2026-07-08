@@ -181,6 +181,30 @@ fn test_move_duplicate_source_preserved() {
 }
 
 #[test]
+fn test_move_aborted_without_confirmation() {
+    let tmp = tempfile::tempdir().unwrap();
+    let src = tmp.path().join("src");
+    let dest = tmp.path().join("dest");
+    fs::create_dir_all(&dest).unwrap();
+    write(&src.join("A1_0001.ARW"), &make_arw("2026:06:13 10:00:00"));
+
+    let mut child = Command::new(binary())
+        .args([&src, &dest, Path::new("--move")])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    child.stdin.take().unwrap().write_all(b"no\n").unwrap();
+    let output = child.wait_with_output().unwrap();
+
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("aborted"));
+    assert!(src.join("A1_0001.ARW").exists(), "src file must be untouched when move is aborted");
+    assert!(!dest.join("2026/2026-06-13/A1_0001.ARW").exists(), "dest must not be created when move is aborted");
+}
+
+#[test]
 fn test_conflict_rename() {
     let tmp = tempfile::tempdir().unwrap();
     let src = tmp.path().join("src");
