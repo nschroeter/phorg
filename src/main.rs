@@ -2,6 +2,7 @@ use anyhow::{Context, Result};
 use chrono::Local;
 use clap::Parser;
 use indicatif::{ProgressBar, ProgressStyle};
+use std::collections::HashSet;
 use std::fs;
 use std::io::{BufReader, BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
@@ -103,6 +104,19 @@ fn resolve_conflict(base: &Path) -> PathBuf {
     }
 }
 
+fn cleanup_empty_dirs(leaf: &Path, root: &Path) {
+    let mut dir = leaf;
+    while fs::remove_dir(dir).is_ok() {
+        if dir == root {
+            break;
+        }
+        match dir.parent() {
+            Some(parent) => dir = parent,
+            None => break,
+        }
+    }
+}
+
 fn transfer_xmp_sidecar(src_photo: &Path, dest_photo: &Path, move_files: bool, dry_run: bool, pb: &ProgressBar) -> Result<bool> {
     let mut xmp_filename = src_photo.file_name().unwrap().to_os_string();
     xmp_filename.push(".xmp");
@@ -188,6 +202,7 @@ fn main() -> Result<()> {
     let mut stats = Stats::default();
     let log_name = format!("duplicates-log-{}.log", Local::now().format("%Y-%m-%d_%H-%M-%S"));
     let mut dup_log: Option<BufWriter<fs::File>> = None;
+    let mut touched_dirs: HashSet<PathBuf> = HashSet::new();
 
     let entries = WalkDir::new(&src)
         .into_iter()
@@ -241,6 +256,7 @@ fn main() -> Result<()> {
             if move_files {
                 fs::rename(src_path, &target)
                     .with_context(|| format!("move {} -> {}", src_path.display(), target.display()))?;
+                touched_dirs.insert(src_path.parent().unwrap().to_path_buf());
             } else {
                 fs::copy(src_path, &target)
                     .with_context(|| format!("copy {} -> {}", src_path.display(), target.display()))?;
@@ -271,14 +287,8 @@ fn main() -> Result<()> {
         println!("{} duplicate(s) skipped", stats.duplicates);
     }
 
-    if move_files && !dry_run {
-        for entry in WalkDir::new(&src).contents_first(true)
-            .into_iter()
-            .filter_map(|e| e.ok())
-            .filter(|e| e.file_type().is_dir())
-        {
-            let _ = fs::remove_dir(entry.path());
-        }
+    for dir in &touched_dirs {
+        cleanup_empty_dirs(dir, &src);
     }
 
     Ok(())
