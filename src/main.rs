@@ -3,7 +3,7 @@ use chrono::Local;
 use clap::Parser;
 use indicatif::{ProgressBar, ProgressStyle};
 use std::fs;
-use std::io::BufReader;
+use std::io::{BufReader, BufWriter, Write};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 use walkdir::WalkDir;
@@ -118,7 +118,7 @@ struct Stats {
     arw: u32,
     jpg: u32,
     xmp: u32,
-    duplicate_paths: Vec<String>,
+    duplicates: u32,
 }
 
 fn is_target(path: &Path) -> bool {
@@ -164,6 +164,8 @@ fn main() -> Result<()> {
     pb.enable_steady_tick(Duration::from_millis(100));
 
     let mut stats = Stats::default();
+    let log_name = format!("duplicates-log-{}.log", Local::now().format("%Y-%m-%d_%H-%M-%S"));
+    let mut dup_log: Option<BufWriter<fs::File>> = None;
 
     let entries = WalkDir::new(&src)
         .into_iter()
@@ -192,7 +194,15 @@ fn main() -> Result<()> {
                 let dest_str = target.display().to_string();
                 pb.suspend(|| eprintln!("SKIP (duplicate): {src_str}"));
                 pb.suspend(|| println!("{dest_str}"));
-                stats.duplicate_paths.push(format!("{src_str} -> {dest_str}"));
+                stats.duplicates += 1;
+                let writer = match dup_log.as_mut() {
+                    Some(w) => w,
+                    None => {
+                        let f = fs::File::create(&log_name).with_context(|| format!("write {log_name}"))?;
+                        dup_log.insert(BufWriter::new(f))
+                    }
+                };
+                writeln!(writer, "{src_str} -> {dest_str}").with_context(|| format!("write {log_name}"))?;
                 pb.inc(1);
                 continue;
             }
@@ -229,11 +239,11 @@ fn main() -> Result<()> {
     let verb = if move_files { "Moved" } else { "Copied" };
     let total = stats.arw + stats.jpg + stats.xmp;
     println!("{verb} {total} files — {} ARW, {} JPG, {} XMP", stats.arw, stats.jpg, stats.xmp);
-    if !stats.duplicate_paths.is_empty() {
-        println!("{} duplicate(s) skipped", stats.duplicate_paths.len());
-        let log_name = format!("duplicates-log-{}.log", Local::now().format("%Y-%m-%d_%H-%M-%S"));
-        fs::write(&log_name, stats.duplicate_paths.join("\n") + "\n")
-            .with_context(|| format!("write {log_name}"))?;
+    if let Some(mut w) = dup_log {
+        w.flush().with_context(|| format!("write {log_name}"))?;
+    }
+    if stats.duplicates > 0 {
+        println!("{} duplicate(s) skipped", stats.duplicates);
     }
 
     if move_files && !dry_run {
