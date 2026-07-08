@@ -145,8 +145,7 @@ fn main() -> Result<()> {
     let pb = ProgressBar::new(entries.len() as u64);
     pb.set_prefix(if move_files { "Moving" } else { "Copying" });
     pb.set_style(
-        ProgressStyle::with_template("{spinner:.dim} {prefix} [{bar:40}] {pos}/{len} {msg}")
-            .unwrap()
+        ProgressStyle::with_template("{spinner:.dim} {prefix} [{bar:40}] {pos}/{len} {msg}")?
             .tick_chars("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏ "),
     );
     pb.enable_steady_tick(Duration::from_millis(100));
