@@ -108,6 +108,19 @@ fn test_organizes_by_date() {
 }
 
 #[test]
+fn test_dest_created_when_missing() {
+    let tmp = tempfile::tempdir().unwrap();
+    let src = tmp.path().join("src");
+    let dest = tmp.path().join("dest-does-not-exist-yet");
+    write(&src.join("A1_0001.ARW"), &make_arw("2026:06:13 10:00:00"));
+
+    assert!(!dest.exists());
+    let status = Command::new(binary()).args([&src, &dest]).status().unwrap();
+    assert!(status.success());
+    assert!(dest.join("2026/2026-06-13/A1_0001.ARW").exists());
+}
+
+#[test]
 fn test_dry_run_makes_no_changes() {
     let tmp = tempfile::tempdir().unwrap();
     let src = tmp.path().join("src");
