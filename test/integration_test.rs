@@ -253,6 +253,18 @@ fn test_dest_inside_src_rejected() {
 }
 
 #[test]
+fn test_nonexistent_src_rejected() {
+    let tmp = tempfile::tempdir().unwrap();
+    let src = tmp.path().join("does-not-exist");
+    let dest = tmp.path().join("dest");
+    fs::create_dir_all(&dest).unwrap();
+
+    let output = Command::new(binary()).args([&src, &dest]).output().unwrap();
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("invalid src"));
+}
+
+#[test]
 fn test_jpg_organized() {
     let tmp = tempfile::tempdir().unwrap();
     let src = tmp.path().join("src");
